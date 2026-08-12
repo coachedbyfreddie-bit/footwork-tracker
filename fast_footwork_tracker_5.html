@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Fast Footwork Progress Tracker</title>
+<!-- Firebase (for cross-device progress syncing) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --cbf-cyan:#00DEFF;
+    --cbf-dark:#2A2A2A;
+    --cbf-dark-light:#363636;
+    --cbf-off-white:#EDEBE9;
+    --cbf-muted:rgba(237,235,233,0.55);
+    --ink:#161616;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'SF Pro Display','SF Pro Text',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    background:var(--cbf-dark);
+    color:var(--cbf-off-white);
+    padding:24px 14px;
+  }
+  .wrap{
+    max-width:920px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:260px 1fr;
+    gap:20px;
+  }
+  @media (max-width:720px){
+    .wrap{grid-template-columns:1fr;}
+    body{padding:16px 10px;}
+    .sidebar{max-height:240px;padding:14px;}
+    .move-btn{padding:12px 10px;font-size:14px;}
+    .card{padding:20px 18px 18px;}
+    .player-bar{flex-wrap:wrap;gap:8px;}
+    .ring-wrap svg{width:150px;height:150px;}
+  }
+  .sidebar{
+    background:var(--cbf-dark-light);
+    border:1px solid rgba(243,240,230,0.15);
+    border-radius:14px;
+    padding:16px;
+    max-height:80vh;
+    overflow-y:auto;
+  }
+  .sidebar h1{
+    font-size:16px;
+    margin:0 0 14px;
+    color:var(--cbf-off-white);
+  }
+  .section-title{
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+    font-size:11px;
+    color:var(--cbf-cyan);
+    font-weight:800;
+    margin:16px 0 6px;
+  }
+  .section-title:first-of-type{margin-top:0;}
+  .move-btn{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    width:100%;
+    text-align:left;
+    background:transparent;
+    border:none;
+    color:var(--cbf-off-white);
+    padding:8px 8px;
+    border-radius:8px;
+    font-size:13px;
+    cursor:pointer;
+    margin-bottom:2px;
+  }
+  .move-btn:hover{background:rgba(243,240,230,0.08);}
+  .move-btn.active{
+    background:var(--cbf-cyan);
+    color:var(--ink);
+    font-weight:700;
+  }
+  .move-badge{
+    font-size:10px;
+    background:rgba(243,240,230,0.15);
+    padding:2px 6px;
+    border-radius:10px;
+    margin-left:6px;
+  }
+  .move-btn.active .move-badge{
+    background:rgba(26,31,26,0.2);
+    color:var(--ink);
+  }
+
+  .card{
+    background:var(--cbf-dark-light);
+    border:1px solid rgba(243,240,230,0.15);
+    border-radius:14px;
+    padding:28px 26px 22px;
+  }
+  .eyebrow{
+    text-transform:uppercase;
+    letter-spacing:2px;
+    font-size:11px;
+    color:var(--cbf-cyan);
+    font-weight:700;
+    margin-bottom:4px;
+  }
+  h2{
+    font-size:22px;
+    margin:0 0 20px;
+    font-weight:700;
+    color:var(--cbf-off-white);
+  }
+  .ring-wrap{
+    display:flex;
+    justify-content:center;
+    position:relative;
+    margin-bottom:18px;
+  }
+  svg{transform:rotate(-90deg);}
+  .track{stroke:rgba(243,240,230,0.12);}
+  .progress{
+    stroke:var(--cbf-cyan);
+    stroke-linecap:round;
+    transition:stroke-dashoffset 0.6s ease;
+  }
+  .ring-center{
+    position:absolute;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    text-align:center;
+  }
+  .ring-count{
+    font-size:38px;
+    font-weight:800;
+    color:var(--cbf-off-white);
+    line-height:1;
+  }
+  .ring-label{
+    font-size:11px;
+    color:var(--cbf-muted);
+    margin-top:4px;
+    letter-spacing:0.5px;
+  }
+  .stat-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:13px;
+    color:var(--cbf-muted);
+    margin-bottom:4px;
+  }
+  .stat-row b{color:var(--cbf-off-white);}
+  .next-test{
+    margin-top:16px;
+    background:rgba(0,222,255,0.10);
+    border:1px dashed var(--cbf-cyan);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:13px;
+  }
+  .next-test.ready{
+    background:var(--cbf-cyan);
+    border-style:solid;
+    color:var(--ink);
+    font-weight:700;
+    text-align:center;
+  }
+  .test-input{
+    margin-top:12px;
+    display:none;
+    gap:8px;
+  }
+  .test-input input{
+    flex:1;
+    border-radius:8px;
+    border:1px solid rgba(243,240,230,0.3);
+    background:rgba(255,255,255,0.06);
+    color:var(--cbf-off-white);
+    padding:10px;
+    font-size:16px;
+  }
+  .test-input button{flex:0 0 auto;padding:10px 16px;}
+  .celebration{
+    display:none;
+    margin-top:14px;
+    background:linear-gradient(135deg, var(--cbf-cyan), #6be8ff);
+    color:var(--ink);
+    border-radius:10px;
+    padding:14px;
+    text-align:center;
+    font-weight:800;
+    font-size:14px;
+    animation:pop 0.4s ease;
+  }
+  .celebration .sub{
+    display:block;
+    font-weight:600;
+    font-size:12px;
+    margin-top:3px;
+  }
+  @keyframes pop{
+    0%{transform:scale(0.85);opacity:0;}
+    60%{transform:scale(1.03);opacity:1;}
+    100%{transform:scale(1);}
+  }
+  .controls{
+    display:flex;
+    gap:8px;
+    margin-top:18px;
+  }
+  button{
+    border:none;
+    border-radius:8px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+    min-height:44px;
+  }
+  .controls button{
+    flex:1;
+    background:var(--cbf-off-white);
+    color:var(--ink);
+    padding:10px 8px;
+  }
+  .controls button.secondary{
+    background:transparent;
+    color:var(--cbf-muted);
+    border:1px solid rgba(243,240,230,0.3);
+  }
+  button:active{transform:scale(0.97);}
+  .milestones{
+    display:flex;
+    gap:5px;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+  .dot{
+    width:9px;height:9px;border-radius:50%;
+    background:rgba(243,240,230,0.15);
+  }
+  .dot.filled{background:var(--cbf-cyan);}
+  .history{
+    margin-top:20px;
+    border-top:1px solid rgba(243,240,230,0.12);
+    padding-top:14px;
+  }
+  .history h3{
+    font-size:12px;
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+    color:var(--cbf-muted);
+    margin:0 0 10px;
+    font-weight:700;
+  }
+  .history-empty{
+    font-size:13px;
+    color:var(--cbf-muted);
+    font-style:italic;
+  }
+  .history-item{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:8px 0;
+    border-bottom:1px solid rgba(243,240,230,0.08);
+    font-size:13px;
+  }
+  .history-item:last-child{border-bottom:none;}
+  .history-left{color:var(--cbf-muted);}
+  .history-left b{color:var(--cbf-off-white);}
+  .history-reps{
+    background:rgba(0,222,255,0.15);
+    color:var(--cbf-cyan);
+    font-weight:800;
+    padding:3px 10px;
+    border-radius:20px;
+    font-size:13px;
+  }
+  .trend{font-size:11px;margin-left:6px;}
+  .trend.up{color:#7fbf6f;}
+  .trend.down{color:#e07070;}
+  .video-link{
+    display:inline-block;
+    margin-top:2px;
+    font-size:12px;
+    color:var(--cbf-muted);
+    text-decoration:none;
+    border-bottom:1px dashed rgba(243,240,230,0.4);
+  }
+  .video-link:hover{color:var(--cbf-cyan);}
+
+  .login-overlay{
+    position:fixed;
+    inset:0;
+    background:var(--cbf-dark);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:50;
+    padding:20px;
+  }
+  .login-box{
+    background:var(--cbf-dark-light);
+    border:1px solid rgba(243,240,230,0.15);
+    border-radius:14px;
+    padding:30px 26px;
+    max-width:340px;
+    width:100%;
+    text-align:center;
+  }
+  .login-box .eyebrow{margin-bottom:6px;}
+  .login-box h2{margin:0 0 6px;font-size:20px;}
+  .login-box p{
+    color:var(--cbf-muted);
+    font-size:13px;
+    margin:0 0 18px;
+  }
+  .login-box input{
+    width:100%;
+    border-radius:8px;
+    border:1px solid rgba(243,240,230,0.3);
+    background:rgba(255,255,255,0.06);
+    color:var(--cbf-off-white);
+    padding:11px;
+    font-size:14px;
+    margin-bottom:12px;
+  }
+  .login-box button{
+    width:100%;
+    background:var(--cbf-cyan);
+    color:var(--ink);
+    padding:11px;
+    font-size:16px;
+    border-radius:8px;
+  }
+  .known-players{
+    margin-top:16px;
+    text-align:left;
+  }
+  .known-players .label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--cbf-muted);
+    margin-bottom:8px;
+    font-weight:700;
+  }
+  .player-chip{
+    display:inline-block;
+    background:rgba(243,240,230,0.1);
+    color:var(--cbf-off-white);
+    border:1px solid rgba(243,240,230,0.2);
+    padding:6px 12px;
+    border-radius:20px;
+    font-size:12px;
+    margin:0 6px 6px 0;
+    cursor:pointer;
+  }
+  .player-chip:hover{border-color:var(--cbf-cyan);color:var(--cbf-cyan);}
+
+  .player-bar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    max-width:920px;
+    margin:0 auto 14px;
+    font-size:13px;
+    color:var(--cbf-muted);
+  }
+  .player-bar b{color:var(--cbf-off-white);}
+  .player-bar button{
+    background:transparent;
+    color:var(--cbf-muted);
+    border:1px solid rgba(243,240,230,0.3);
+    padding:6px 12px;
+    border-radius:8px;
+    font-size:12px;
+  }
+  .player-bar .bar-right{display:flex;gap:8px;align-items:center;}
+  .player-bar .coach-link{
+    background:transparent;
+    border:1px solid rgba(0,222,255,0.35);
+    color:var(--cbf-cyan);
+    padding:6px 12px;
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+  }
+
+  .logo{
+    width:56px;
+    height:56px;
+    display:block;
+    margin:0 auto 14px;
+  }
+  .login-box .logo{width:72px;height:72px;}
+
+  .welcome-card{
+    max-width:920px;
+    margin:0 auto 20px;
+    background:var(--cbf-dark-light);
+    border:1px solid rgba(243,240,230,0.15);
+    border-radius:14px;
+    padding:24px 26px;
+  }
+  .welcome-card .welcome-head{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:14px;
+  }
+  .welcome-card .logo{margin:0;flex-shrink:0;}
+  .welcome-card h2{
+    margin:0;
+    font-size:19px;
+    color:var(--cbf-off-white);
+  }
+  .welcome-card p{
+    font-size:13.5px;
+    line-height:1.6;
+    color:var(--cbf-muted);
+    margin:0 0 12px;
+  }
+  .welcome-card p:last-child{margin-bottom:0;}
+  .welcome-card strong{color:var(--cbf-off-white);}
+  .welcome-toggle{
+    background:transparent;
+    border:none;
+    color:var(--cbf-cyan);
+    font-size:12px;
+    cursor:pointer;
+    padding:0;
+    margin-top:10px;
+    text-decoration:underline;
+  }
+
+  .share-btn{
+    width:100%;
+    background:transparent;
+    color:var(--cbf-cyan);
+    border:1px solid rgba(0,222,255,0.4);
+    padding:10px 8px;
+    border-radius:8px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+    margin-top:10px;
+  }
+
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.75);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:100;
+    padding:20px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--cbf-dark-light);
+    border-radius:14px;
+    border:1px solid rgba(243,240,230,0.15);
+    padding:22px;
+    max-width:420px;
+    width:100%;
+    max-height:88vh;
+    overflow-y:auto;
+  }
+  .modal-box h3{margin:0 0 14px;color:var(--cbf-off-white);font-size:16px;}
+  .modal-close{
+    background:transparent;
+    border:1px solid rgba(243,240,230,0.3);
+    color:var(--cbf-muted);
+    padding:8px 14px;
+    border-radius:8px;
+    font-size:12px;
+    cursor:pointer;
+    margin-top:14px;
+    width:100%;
+  }
+  #shareCanvas{
+    width:100%;
+    border-radius:10px;
+    margin-bottom:6px;
+    display:block;
+  }
+  .share-download{
+    width:100%;
+    background:var(--cbf-cyan);
+    color:var(--ink);
+    padding:11px;
+    border-radius:8px;
+    font-weight:700;
+    font-size:13px;
+    text-align:center;
+    display:block;
+    text-decoration:none;
+    margin-top:8px;
+  }
+
+  .coach-view{
+    display:none;
+    max-width:920px;
+    margin:0 auto;
+  }
+  .coach-view.open{display:block;}
+  .coach-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:16px;
+  }
+  .coach-header h2{margin:0;color:var(--cbf-off-white);font-size:20px;}
+  .coach-player-card{
+    background:var(--cbf-dark-light);
+    border:1px solid rgba(243,240,230,0.15);
+    border-radius:12px;
+    padding:16px 18px;
+    margin-bottom:12px;
+  }
+  .coach-player-card h4{
+    margin:0 0 10px;
+    color:var(--cbf-off-white);
+    font-size:15px;
+  }
+  .coach-move-row{
+    display:flex;
+    justify-content:space-between;
+    font-size:12.5px;
+    color:var(--cbf-muted);
+    padding:5px 0;
+    border-bottom:1px solid rgba(243,240,230,0.06);
+  }
+  .coach-move-row:last-child{border-bottom:none;}
+  .coach-move-row b{color:var(--cbf-off-white);}
+  .coach-empty{color:var(--cbf-muted);font-size:13px;text-align:center;padding:30px 0;}
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <img class="logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIiB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iPgoKICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjUwIiBmaWxsPSIjMmEyYTJhIi8+CgogIDwhLS0gT3V0ZXIgcmluZyAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIyNTAiIHI9IjIzOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDBkZWZmIiBzdHJva2Utd2lkdGg9IjIuNSIvPgoKICA8IS0tIGNiZiBtb25vZ3JhbSDigJQgb3B0aWNhbGx5IGNlbnRyZWQsIHNpdHRpbmcgc2xpZ2h0bHkgYWJvdmUgdHJ1ZSBjZW50cmUgdG8gYWNjb3VudCBmb3IgYXJjIGJlbG93IC0tPgogIDx0ZXh0CiAgICB4PSIyNTAiCiAgICB5PSIyNzgiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogICAgZG9taW5hbnQtYmFzZWxpbmU9ImF1dG8iCiAgICBmb250LWZhbWlseT0iJ1NGIFBybyBEaXNwbGF5JywgJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIKICAgIGZvbnQtd2VpZ2h0PSI3MDAiCiAgICBmb250LXNpemU9IjE0OCIKICAgIGxldHRlci1zcGFjaW5nPSItNyIKICAgIGZpbGw9IiMwMGRlZmYiCiAgPmNiZjwvdGV4dD4KCiAgPCEtLSBQaXRjaCBjZW50cmUgYXJjIOKAlCBzaXRzIGNsZWFubHkgYmVsb3cgdGV4dCBiYXNlbGluZSwgcGVyZmVjdGx5IGNlbnRyZWQgb24geD0yNTAgLS0+CiAgPHBhdGgKICAgIGQ9Ik0gMTE4IDMwOCBRIDI1MCAzNTggMzgyIDMwOCIKICAgIGZpbGw9Im5vbmUiCiAgICBzdHJva2U9IiMwMGRlZmYiCiAgICBzdHJva2Utd2lkdGg9IjMiCiAgICBzdHJva2UtbGluZWNhcD0icm91bmQiCiAgICBvcGFjaXR5PSIwLjU1IgogIC8+CgogIDwhLS0gQ2VudHJlIHNwb3Qg4oCUIHNpdHMgb24gdGhlIGFyYyBhcGV4LCBwZXJmZWN0bHkgY2VudHJlZCAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIzMjAiIHI9IjYiIGZpbGw9IiMwMGRlZmYiIG9wYWNpdHk9IjAuNTUiLz4KCjwvc3ZnPgo=" alt="Coached by Freddie">
+    <div class="eyebrow">Fast Footwork Programme</div>
+    <h2>Who's training?</h2>
+    <p>Create an account or log in to save your own progress.</p>
+    <input type="text" id="playerNameInput" placeholder="Username" autocomplete="off" onkeydown="if(event.key==='Enter') document.getElementById('playerPasswordInput').focus()">
+    <input type="password" id="playerPasswordInput" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter') loginPlayer()">
+    <div id="loginError" style="display:none;color:#e07070;font-size:12px;margin:-6px 0 12px;text-align:left;"></div>
+    <button onclick="loginPlayer()">Log In / Create Account</button>
+    <div class="known-players" id="knownPlayers" style="display:none;">
+      <div class="label">Saved usernames</div>
+      <div id="playerChips"></div>
+    </div>
+  </div>
+</div>
+
+<div class="player-bar" id="playerBar" style="display:none;">
+  <div>Training as <b id="currentPlayerLabel"></b></div>
+  <div class="bar-right">
+    <button class="coach-link" onclick="openCoachGate()">Coach View</button>
+    <button onclick="logoutPlayer()">Switch Player</button>
+  </div>
+</div>
+
+<div class="welcome-card" id="welcomeCard" style="display:none;">
+  <div class="welcome-head">
+    <img class="logo" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIiB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iPgoKICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjUwIiBmaWxsPSIjMmEyYTJhIi8+CgogIDwhLS0gT3V0ZXIgcmluZyAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIyNTAiIHI9IjIzOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDBkZWZmIiBzdHJva2Utd2lkdGg9IjIuNSIvPgoKICA8IS0tIGNiZiBtb25vZ3JhbSDigJQgb3B0aWNhbGx5IGNlbnRyZWQsIHNpdHRpbmcgc2xpZ2h0bHkgYWJvdmUgdHJ1ZSBjZW50cmUgdG8gYWNjb3VudCBmb3IgYXJjIGJlbG93IC0tPgogIDx0ZXh0CiAgICB4PSIyNTAiCiAgICB5PSIyNzgiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogICAgZG9taW5hbnQtYmFzZWxpbmU9ImF1dG8iCiAgICBmb250LWZhbWlseT0iJ1NGIFBybyBEaXNwbGF5JywgJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIKICAgIGZvbnQtd2VpZ2h0PSI3MDAiCiAgICBmb250LXNpemU9IjE0OCIKICAgIGxldHRlci1zcGFjaW5nPSItNyIKICAgIGZpbGw9IiMwMGRlZmYiCiAgPmNiZjwvdGV4dD4KCiAgPCEtLSBQaXRjaCBjZW50cmUgYXJjIOKAlCBzaXRzIGNsZWFubHkgYmVsb3cgdGV4dCBiYXNlbGluZSwgcGVyZmVjdGx5IGNlbnRyZWQgb24geD0yNTAgLS0+CiAgPHBhdGgKICAgIGQ9Ik0gMTE4IDMwOCBRIDI1MCAzNTggMzgyIDMwOCIKICAgIGZpbGw9Im5vbmUiCiAgICBzdHJva2U9IiMwMGRlZmYiCiAgICBzdHJva2Utd2lkdGg9IjMiCiAgICBzdHJva2UtbGluZWNhcD0icm91bmQiCiAgICBvcGFjaXR5PSIwLjU1IgogIC8+CgogIDwhLS0gQ2VudHJlIHNwb3Qg4oCUIHNpdHMgb24gdGhlIGFyYyBhcGV4LCBwZXJmZWN0bHkgY2VudHJlZCAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIzMjAiIHI9IjYiIGZpbGw9IiMwMGRlZmYiIG9wYWNpdHk9IjAuNTUiLz4KCjwvc3ZnPgo=" alt="Coached by Freddie">
+    <h2>Welcome to the coachedbyfreddie fast footwork ball manipulation playlist</h2>
+  </div>
+  <p>Here you'll find key ball manipulation moves to become more comfortable, fluid, confident, and dynamic on the ball.</p>
+  <p>These are not all skills to beat a player (although most of these can be used in 1v1s), they are moves to be performed in a small area, with high repetition, using both feet.</p>
+  <p>Try to complete at least <strong>3-5 different moves each day</strong> (excl. matchdays). This shouldn't take more than <strong>10-15 minutes</strong>.</p>
+  <p>Complete <strong>50 repetitions</strong> of each full move. 25 times working with the players' right foot, 25 with their left. For example, 50 toe taps would simply be 50 touches. Although, the more complex moves require more touches to complete one repetition. Funky toe taps for example takes 150 touches to complete 50 repetitions of the move. The name of the move helps with understanding what one repetition of the move takes.</p>
+  <p>After the very first time you complete a move, time how many the player can do in 30 seconds and note down how many repetitions they completed in the 30 second period. From then, every 5 more occasions they complete the move, time how many they completed in 30 seconds. This allows the player to see clear, measurable progress.</p>
+  <button class="welcome-toggle" onclick="document.getElementById('welcomeCard').style.display='none';">Hide this — got it</button>
+</div>
+
+<div class="coach-view" id="coachView">
+  <div class="coach-header">
+    <h2>Coach View — All Players</h2>
+    <button class="modal-close" style="width:auto;margin:0;" onclick="closeCoachView()">Back to Training</button>
+  </div>
+  <div id="coachContent"></div>
+</div>
+
+<div class="wrap" id="mainWrap" style="display:none;">
+  <div class="sidebar">
+    <h1>Fast Footwork Programme</h1>
+    <div id="moveList"></div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow" id="sectionLabel">Brilliant Basics</div>
+    <h2 id="moveName">Move name</h2>
+    <a class="video-link" id="videoLink" href="#" target="_blank" rel="noopener">Watch demo video ↗</a>
+
+    <div class="ring-wrap" style="margin-top:18px;">
+      <svg width="180" height="180" viewBox="0 0 180 180">
+        <circle class="track" cx="90" cy="90" r="78" stroke-width="14" fill="none"/>
+        <circle id="progressRing" class="progress" cx="90" cy="90" r="78" stroke-width="14" fill="none"
+          stroke-dasharray="490" stroke-dashoffset="490"/>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-count" id="ringCount">0</div>
+        <div class="ring-label">/ 5 TO NEXT TEST</div>
+      </div>
+    </div>
+
+    <div class="stat-row"><span>Total completions</span><b id="totalCount">0</b></div>
+    <div class="stat-row"><span>Last 30s test result</span><b id="lastResult">Not tested yet</b></div>
+
+    <div class="next-test" id="nextTestBox">4 more completions until the next 30-second timing.</div>
+
+    <div class="test-input" id="testInput">
+      <input type="number" min="0" id="repsField" placeholder="Reps in 30s">
+      <button onclick="submitResult()">Save</button>
+    </div>
+
+    <div class="celebration" id="celebration"></div>
+
+    <div class="controls">
+      <button onclick="logCompletion()">Log Completion</button>
+      <button class="secondary" onclick="resetMove()">Reset This Move</button>
+    </div>
+
+    <button class="share-btn" onclick="openShareModal()">📤 Share Progress to Instagram Story</button>
+
+    <div class="milestones" id="milestones"></div>
+
+    <div class="history">
+      <h3>Test History</h3>
+      <div id="historyList"><div class="history-empty">No 30-second tests logged yet.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="shareModal">
+  <div class="modal-box">
+    <h3>Share Progress</h3>
+    <canvas id="shareCanvas" width="1080" height="1920"></canvas>
+    <a id="shareDownloadLink" class="share-download" download="cbf-progress.png">Download for Instagram Story</a>
+    <button class="modal-close" onclick="closeShareModal()">Close</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="coachGateModal">
+  <div class="modal-box">
+    <h3>Coach Access</h3>
+    <input type="password" id="coachPasswordInput" placeholder="Coach password" autocomplete="off" style="width:100%;border-radius:8px;border:1px solid rgba(243,240,230,0.3);background:rgba(255,255,255,0.06);color:var(--cbf-off-white);padding:11px;font-size:16px;margin-bottom:10px;" onkeydown="if(event.key==='Enter') submitCoachGate()">
+    <div id="coachGateError" style="display:none;color:#e07070;font-size:12px;margin-bottom:10px;"></div>
+    <button class="share-download" style="margin-top:0;" onclick="submitCoachGate()">Enter</button>
+    <button class="modal-close" onclick="closeCoachGate()">Cancel</button>
+  </div>
+</div>
+
+<script>
+const PROGRAMME = [
+  {
+    section: "Brilliant Basics",
+    moves: [
+      {name:"Ball Boxes", url:"https://drive.google.com/file/d/1vS28d2YHt3Rb5ctw4848WjcTU7JaMf3y/view?usp=sharing"},
+      {name:"Around The Foot Drag Pushes (Outside/Laces/Inside)", url:"https://drive.google.com/file/d/1cDhns3bvUtyOflIDiYR0rL-XroUay_ul/view?usp=sharing"},
+      {name:"Static Stepovers", url:"https://drive.google.com/file/d/1_UnbR7Zu-QNoAa1xcoLNdD3rXvntTARn/view?usp=sharing"},
+      {name:"Sole Rolls", url:"https://drive.google.com/file/d/1VntoFnAC1NfrNRx40rqsQ_x1HoCUH5jH/view?usp=sharing"},
+      {name:"Push Pulls (Y Shape)", url:"https://drive.google.com/file/d/1Vg22kuMLOizj7akbpaAqgGG4clfg1Xi6/view?usp=sharing"},
+      {name:"Heel Push Sole Drag", url:"https://drive.google.com/file/d/1SI1Ey3Qh_i7pRv87BQdIFBdwU-qGZEYd/view?usp=sharing"},
+      {name:"Sole Roll Stop", url:"https://drive.google.com/file/d/1NEFWJZ-N7aoipJlgJ9dhPCojfZHmwFwL/view?usp=sharing"},
+      {name:"Inside Outside Sole Rolls", url:"https://drive.google.com/file/d/1MeOqQWQM9UaA7EI-5CXtUJvM52wlV5VO/view?usp=sharing"},
+      {name:"On The Spot L Turns", url:"https://drive.google.com/file/d/1KTWwpEQ_Yf5iGJigU-5ifXnMOTqPjUxX/view?usp=sharing"},
+      {name:"Sole Roll Stepovers", url:"https://drive.google.com/file/d/12VNicErcW6E0nzOW7s5DEo1UkdtJeJiK/view?usp=sharing"},
+      {name:"Toe Taps", url:"https://drive.google.com/file/d/11GOyzaKvgOMtzKVR7m0aV4Ny4Sb3Luxi/view?usp=sharing"},
+      {name:"Inside Outside Cuts", url:"https://drive.google.com/file/d/108nnsIKZsmYDOBwyh3-4nAiTD5XmLeXc/view?usp=sharing"}
+    ]
+  },
+  {
+    section: "Advanced Patterns",
+    moves: [
+      {name:"Stepover Jab", url:"https://drive.google.com/file/d/1zrMJJomqxThgSpMaxjUVk-uW_znB3dyo/view?usp=sharing"},
+      {name:"Double Ball Box Stepover", url:"https://drive.google.com/file/d/1vvur9ZD-YGPqXIddswjHadHkajeONkEQ/view?usp=sharing"},
+      {name:"Inside Outside Inside Sole Rolls", url:"https://drive.google.com/file/d/1u2vcJoZJIsN__6sPPfIP0Q7vWGztiHLW/view?usp=sharing"},
+      {name:"Inside Snap Double Ball Box", url:"https://drive.google.com/file/d/1kI9JHhSb3_u-Hzv4mzUkQ1j6BDQJ8gJy/view?usp=sharing"},
+      {name:"Double Jab Rivelino", url:"https://drive.google.com/file/d/1gNMeZ-vjXGrhn0fnBZeozWWaWjDpBPpe/view?usp=sharing"},
+      {name:"Y Shape V Turn (Right Right, Right Left)", url:"https://drive.google.com/file/d/1XtPBWn-a4FsMkmC1HMuxrWzY8c22S-47/view?usp=sharing"},
+      {name:"L Turn Push", url:"https://drive.google.com/file/d/1LhRk46Num5GqkwOLN-jueFNiqcEDJ_K9/view?usp=sharing"},
+      {name:"Funky Toe Taps", url:"https://drive.google.com/file/d/1RMzXA3oCwKvd2um7Rq1HjejhYYTtddgS/view?usp=sharing"},
+      {name:"Pull Push (Laces) L Turn", url:"https://drive.google.com/file/d/1EZVfNUWRc5O2WDEpHrXKmSTeMaQBO2wk/view?usp=sharing"},
+      {name:"Outside Snap Double Ball Box", url:"https://drive.google.com/file/d/1ENsHAiOuma3xurXsrF0y_yvqANW116up/view?usp=sharing"},
+      {name:"Double V Turn (Right Left, Right Right)", url:"https://drive.google.com/file/d/13ScFKvQeJJtafRhwPmKnNXWsMM4P7ERC/view?usp=sharing"},
+      {name:"Neymar", url:"https://drive.google.com/file/d/1_MTL_orHAiSMoZDbFH5rEkmj-Pmum48x/view?usp=sharing"}
+    ]
+  },
+  {
+    section: "Mastery Moves",
+    moves: [
+      {name:"Double Jab Stepover Double Jab Rivelino Step", url:"https://drive.google.com/file/d/1qVA6B8cLcVCQvtqHQ8I0UCMZI4KTssRB/view?usp=sharing"},
+      {name:"Drag Push (V Shape) Rivelino Step", url:"https://drive.google.com/file/d/1oqH9WdF48zo2Hzaw4IMx9769QBsk_Ieh/view?usp=sharing"},
+      {name:"Sole Roll Rivelino", url:"https://drive.google.com/file/d/1_VUsvFeFVCs_Chfc0IvLo5apXZj4LzHu/view?usp=sharing"},
+      {name:"Rivelino Double Stepover Jab", url:"https://drive.google.com/file/d/1U5UxBQZM_TeXcoDhd0Xhyzwt5DHhCxGY/view?usp=sharing"},
+      {name:"Inside Outside Inside (Last Inside Touch With Sole)", url:"https://drive.google.com/file/d/1OE5faTmOQjDzieDRIvmTVtp3P1YGIGp1/view?usp=sharing"},
+      {name:"Double Ball Box Stepover Push", url:"https://drive.google.com/file/d/1DwbO2D5Yld4A2a4sd85RYbjF-5aX5cHm/view?usp=sharing"},
+      {name:"Double Inside Snap (Second snap goes behind)", url:"https://drive.google.com/file/d/19q9qJ29ujrWfplKpn19w2tlTzUiav5GA/view?usp=sharing"}
+    ]
+  }
+];
+
+const interval = 5;
+let currentKey = null;
+let state = { total: 0, history: [] };
+let currentPlayer = null;
+
+/* ---------- Storage adapter ----------
+   Backed by Firebase Firestore, so a player's progress follows them
+   to any device — they just log in with the same username/password
+   wherever they open this page. */
+const firebaseConfig = {
+  apiKey: "AIzaSyBBbUShWmpOFe6r8aDBIJjwSvmIKnVAQrE",
+  authDomain: "cbf-footwork-tracker.firebaseapp.com",
+  projectId: "cbf-footwork-tracker",
+  storageBucket: "cbf-footwork-tracker.firebasestorage.app",
+  messagingSenderId: "342939367763",
+  appId: "1:342939367763:web:f0345f9b410f83d72649a6"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const localDB = {
+  async get(key){
+    try{
+      const doc = await db.collection('footwork_kv').doc(key).get();
+      if(!doc.exists) return null;
+      return { value: doc.data().value };
+    }catch(e){
+      console.error('Firestore get error', e);
+      return null;
+    }
+  },
+  async set(key, value){
+    try{
+      await db.collection('footwork_kv').doc(key).set({ value: value });
+      return { value };
+    }catch(e){
+      console.error('Firestore set error', e);
+      return null;
+    }
+  }
+};
+
+function playerSlug(name){
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+}
+
+async function hashPassword(pw){
+  const enc = new TextEncoder().encode(pw);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function loadKnownPlayers(){
+  try{
+    const res = await localDB.get('footwork:roster');
+    if(res && res.value) return JSON.parse(res.value);
+  }catch(e){ /* no roster yet */ }
+  return [];
+}
+
+async function saveRoster(list){
+  try{ await localDB.set('footwork:roster', JSON.stringify(list)); }
+  catch(e){ console.error(e); }
+}
+
+async function showLogin(){
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('playerBar').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('playerPasswordInput').value = '';
+  const list = await loadKnownPlayers();
+  const chipsBox = document.getElementById('knownPlayers');
+  const chips = document.getElementById('playerChips');
+  if(list.length){
+    chipsBox.style.display = 'block';
+    chips.innerHTML = '';
+    list.forEach(p => {
+      const c = document.createElement('span');
+      c.className = 'player-chip';
+      c.textContent = p.name;
+      c.onclick = () => {
+        document.getElementById('playerNameInput').value = p.name;
+        document.getElementById('playerPasswordInput').focus();
+      };
+      chips.appendChild(c);
+    });
+  } else {
+    chipsBox.style.display = 'none';
+  }
+}
+
+function showLoginError(msg){
+  const err = document.getElementById('loginError');
+  err.textContent = msg;
+  err.style.display = 'block';
+}
+
+async function loginPlayer(){
+  const nameVal = document.getElementById('playerNameInput').value.trim();
+  const pwVal = document.getElementById('playerPasswordInput').value;
+  document.getElementById('loginError').style.display = 'none';
+
+  if(!nameVal){ showLoginError('Enter a username.'); return; }
+  if(!pwVal){ showLoginError('Enter a password.'); return; }
+
+  const slug = playerSlug(nameVal);
+  const list = await loadKnownPlayers();
+  const existing = list.find(p => p.slug === slug);
+  const pwHash = await hashPassword(pwVal);
+
+  if(existing){
+    if(existing.pwHash !== pwHash){
+      showLoginError('Incorrect password for this username.');
+      return;
+    }
+  } else {
+    list.push({slug: slug, name: nameVal, pwHash: pwHash});
+    await saveRoster(list);
+  }
+
+  await startSession(nameVal, slug);
+}
+
+async function startSession(name, slug){
+  currentPlayer = { name: name.trim(), slug: slug || playerSlug(name) };
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('playerBar').style.display = 'flex';
+  document.getElementById('currentPlayerLabel').textContent = currentPlayer.name;
+  document.getElementById('welcomeCard').style.display = 'block';
+  document.getElementById('mainWrap').style.display = 'grid';
+  buildSidebar();
+  await selectMove(PROGRAMME[0].section, PROGRAMME[0].moves[0]);
+}
+
+function logoutPlayer(){
+  currentPlayer = null;
+  currentKey = null;
+  document.getElementById('playerNameInput').value = '';
+  document.getElementById('playerPasswordInput').value = '';
+  document.getElementById('welcomeCard').style.display = 'none';
+  document.getElementById('mainWrap').style.display = 'none';
+  closeCoachView();
+  showLogin();
+}
+
+function slug(section, name){
+  return (section + '__' + name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+}
+
+function buildSidebar(){
+  const container = document.getElementById('moveList');
+  container.innerHTML = '';
+  PROGRAMME.forEach(sec => {
+    const title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = sec.section;
+    container.appendChild(title);
+    sec.moves.forEach(m => {
+      const key = slug(sec.section, m.name);
+      const btn = document.createElement('button');
+      btn.className = 'move-btn';
+      btn.id = 'btn-' + key;
+      btn.innerHTML = '<span>' + m.name + '</span>';
+      btn.onclick = () => selectMove(sec.section, m);
+      container.appendChild(btn);
+    });
+  });
+}
+
+async function selectMove(section, move){
+  currentKey = slug(section, move.name);
+  document.querySelectorAll('.move-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.getElementById('btn-' + currentKey);
+  if(activeBtn) activeBtn.classList.add('active');
+
+  document.getElementById('sectionLabel').textContent = section;
+  document.getElementById('moveName').textContent = move.name;
+  document.getElementById('videoLink').href = move.url;
+
+  document.getElementById('testInput').style.display = 'none';
+  document.getElementById('celebration').style.display = 'none';
+
+  await loadState();
+}
+
+async function loadState(){
+  state = { total: 0, history: [] };
+  if(!currentPlayer) return;
+  try{
+    const res = await localDB.get('footwork:' + currentPlayer.slug + ':' + currentKey);
+    if(res && res.value){
+      const parsed = JSON.parse(res.value);
+      state.total = parsed.total || 0;
+      state.history = parsed.history || [];
+    }
+  }catch(e){ /* nothing saved yet */ }
+  document.getElementById('lastResult').textContent = state.history.length
+    ? state.history[state.history.length-1].reps + ' reps (at completion #' + state.history[state.history.length-1].completionNum + ')'
+    : 'Not tested yet';
+  render();
+  renderHistory();
+}
+
+async function saveState(){
+  if(!currentPlayer) return;
+  try{
+    await localDB.set('footwork:' + currentPlayer.slug + ':' + currentKey, JSON.stringify(state));
+  }catch(e){ console.error('Storage error', e); }
+}
+
+function isTestDue(n){
+  return n === 1 || (n > 1 && (n - 1) % interval === 0);
+}
+
+const ring = document.getElementById('progressRing');
+const circumference = 2 * Math.PI * 78;
+ring.setAttribute('stroke-dasharray', circumference);
+
+function render(){
+  const total = state.total;
+  document.getElementById('totalCount').textContent = total;
+
+  let sinceLast;
+  if(total === 0){ sinceLast = 0; }
+  else {
+    let lastMilestone = total === 1 ? 1 : 1 + interval*Math.floor((total-1)/interval);
+    sinceLast = total - lastMilestone;
+    if(isTestDue(total)) sinceLast = 0;
+  }
+  let toGo = interval - sinceLast;
+  let pct = total === 0 ? 0 : sinceLast/interval;
+
+  ring.setAttribute('stroke-dashoffset', circumference - pct*circumference);
+  document.getElementById('ringCount').textContent = total===0? '0' : toGo;
+
+  const box = document.getElementById('nextTestBox');
+  if(total > 0 && isTestDue(total)){
+    box.textContent = "Time it now! This is a 30-second test rep.";
+    box.classList.add('ready');
+  } else {
+    box.classList.remove('ready');
+    box.textContent = toGo + (toGo===1?' more completion':' more completions') + ' until the next 30-second timing.';
+  }
+
+  const ms = document.getElementById('milestones');
+  ms.innerHTML = '';
+  for(let i=0;i<20;i++){
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < total ? ' filled':'');
+    ms.appendChild(d);
+  }
+}
+
+function renderHistory(){
+  const list = document.getElementById('historyList');
+  const history = state.history;
+  if(history.length === 0){
+    list.innerHTML = '<div class="history-empty">No 30-second tests logged yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  const items = [...history].reverse();
+  items.forEach((h, idx) => {
+    const realIdx = history.length - 1 - idx;
+    let trendHtml = '';
+    if(realIdx > 0){
+      const prev = history[realIdx - 1].reps;
+      if(h.reps > prev) trendHtml = '<span class="trend up">▲ +' + (h.reps-prev) + '</span>';
+      else if(h.reps < prev) trendHtml = '<span class="trend down">▼ ' + (h.reps-prev) + '</span>';
+    }
+    const row = document.createElement('div');
+    row.className = 'history-item';
+    row.innerHTML = '<div class="history-left">Completion <b>#' + h.completionNum + '</b>' + trendHtml + '</div><div class="history-reps">' + h.reps + ' reps</div>';
+    list.appendChild(row);
+  });
+}
+
+function logCompletion(){
+  if(!currentKey) return;
+  state.total++;
+  render();
+  saveState();
+  if(isTestDue(state.total)){
+    document.getElementById('testInput').style.display = 'flex';
+    document.getElementById('repsField').value = '';
+    document.getElementById('repsField').focus();
+  }
+}
+
+function submitResult(){
+  const field = document.getElementById('repsField');
+  const reps = parseInt(field.value, 10);
+  if(isNaN(reps) || reps < 0) return;
+
+  const prevBest = state.history.length ? Math.max(...state.history.map(h => h.reps)) : null;
+
+  state.history.push({completionNum: state.total, reps: reps});
+  document.getElementById('lastResult').textContent = reps + ' reps (at completion #' + state.total + ')';
+  document.getElementById('testInput').style.display = 'none';
+  renderHistory();
+  saveState();
+  showCelebration(reps, prevBest);
+}
+
+function showCelebration(reps, prevBest){
+  const box = document.getElementById('celebration');
+  if(prevBest === null){
+    box.style.display = 'block';
+    box.innerHTML = 'First score locked in! <span class="sub">' + reps + ' reps — this is now the benchmark to beat.</span>';
+  } else if(reps > prevBest){
+    box.style.display = 'block';
+    box.innerHTML = '🎉 Congratulations! You beat your best score by ' + (reps - prevBest) + '! <span class="sub">New best: ' + reps + ' reps (previous: ' + prevBest + ')</span>';
+  } else {
+    box.style.display = 'none';
+    return;
+  }
+  setTimeout(() => { box.style.display = 'none'; }, 6000);
+}
+
+function resetMove(){
+  if(!currentKey) return;
+  state = { total: 0, history: [] };
+  document.getElementById('lastResult').textContent = 'Not tested yet';
+  document.getElementById('testInput').style.display = 'none';
+  document.getElementById('celebration').style.display = 'none';
+  render();
+  renderHistory();
+  saveState();
+}
+
+/* ---------- Coach View ---------- */
+// Change this to whatever you like — it's the passphrase you'll enter to see all players' data.
+const COACH_PASSWORD = "cbf-coach";
+
+function openCoachGate(){
+  document.getElementById('coachPasswordInput').value = '';
+  document.getElementById('coachGateError').style.display = 'none';
+  document.getElementById('coachGateModal').classList.add('open');
+  setTimeout(() => document.getElementById('coachPasswordInput').focus(), 50);
+}
+function closeCoachGate(){
+  document.getElementById('coachGateModal').classList.remove('open');
+}
+async function submitCoachGate(){
+  const val = document.getElementById('coachPasswordInput').value;
+  if(val !== COACH_PASSWORD){
+    const err = document.getElementById('coachGateError');
+    err.textContent = 'Incorrect coach password.';
+    err.style.display = 'block';
+    return;
+  }
+  closeCoachGate();
+  await openCoachView();
+}
+
+function closeCoachView(){
+  document.getElementById('coachView').classList.remove('open');
+  document.getElementById('mainWrap').style.display = currentPlayer ? 'grid' : 'none';
+  document.getElementById('welcomeCard').style.display = currentPlayer ? 'block' : 'none';
+}
+
+async function openCoachView(){
+  document.getElementById('mainWrap').style.display = 'none';
+  document.getElementById('welcomeCard').style.display = 'none';
+  const content = document.getElementById('coachContent');
+  content.innerHTML = '<div class="coach-empty">Loading player data…</div>';
+  document.getElementById('coachView').classList.add('open');
+
+  const roster = await loadKnownPlayers();
+  if(!roster.length){
+    content.innerHTML = '<div class="coach-empty">No players have logged in yet.</div>';
+    return;
+  }
+
+  const allMoves = [];
+  PROGRAMME.forEach(sec => sec.moves.forEach(m => allMoves.push({section: sec.section, name: m.name, key: slug(sec.section, m.name)})));
+
+  content.innerHTML = '';
+  for(const p of roster){
+    const card = document.createElement('div');
+    card.className = 'coach-player-card';
+    let totalAllMoves = 0;
+    let bestRows = [];
+
+    for(const mv of allMoves){
+      try{
+        const res = await localDB.get('footwork:' + p.slug + ':' + mv.key);
+        if(res && res.value){
+          const parsed = JSON.parse(res.value);
+          const total = parsed.total || 0;
+          const hist = parsed.history || [];
+          if(total > 0){
+            totalAllMoves += total;
+            const best = hist.length ? Math.max(...hist.map(h => h.reps)) : null;
+            const latest = hist.length ? hist[hist.length-1].reps : null;
+            bestRows.push({name: mv.name, total: total, best: best, latest: latest});
+          }
+        }
+      }catch(e){ /* no data for this move */ }
+    }
+
+    let rowsHtml = '';
+    if(bestRows.length === 0){
+      rowsHtml = '<div class="coach-move-row">No completions logged yet.</div>';
+    } else {
+      bestRows.sort((a,b) => b.total - a.total);
+      rowsHtml = bestRows.map(r =>
+        '<div class="coach-move-row"><span>' + r.name + ' — ' + r.total + ' completions</span><b>' +
+        (r.best !== null ? 'Best: ' + r.best + '/30s' : 'Not tested') + '</b></div>'
+      ).join('');
+    }
+
+    card.innerHTML = '<h4>' + p.name + ' <span style="color:var(--cbf-muted);font-weight:400;font-size:12px;">(' + totalAllMoves + ' total completions across all moves)</span></h4>' + rowsHtml;
+    content.appendChild(card);
+  }
+}
+
+/* ---------- Share to Instagram Story ---------- */
+const shareLogo = new Image();
+shareLogo.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MDAgNTAwIiB3aWR0aD0iNTAwIiBoZWlnaHQ9IjUwMCIgc2hhcGUtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iIHRleHQtcmVuZGVyaW5nPSJnZW9tZXRyaWNQcmVjaXNpb24iPgoKICA8IS0tIEJhY2tncm91bmQgY2lyY2xlIC0tPgogIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjI1MCIgcj0iMjUwIiBmaWxsPSIjMmEyYTJhIi8+CgogIDwhLS0gT3V0ZXIgcmluZyAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIyNTAiIHI9IjIzOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDBkZWZmIiBzdHJva2Utd2lkdGg9IjIuNSIvPgoKICA8IS0tIGNiZiBtb25vZ3JhbSDigJQgb3B0aWNhbGx5IGNlbnRyZWQsIHNpdHRpbmcgc2xpZ2h0bHkgYWJvdmUgdHJ1ZSBjZW50cmUgdG8gYWNjb3VudCBmb3IgYXJjIGJlbG93IC0tPgogIDx0ZXh0CiAgICB4PSIyNTAiCiAgICB5PSIyNzgiCiAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIgogICAgZG9taW5hbnQtYmFzZWxpbmU9ImF1dG8iCiAgICBmb250LWZhbWlseT0iJ1NGIFBybyBEaXNwbGF5JywgJ0hlbHZldGljYSBOZXVlJywgSGVsdmV0aWNhLCBBcmlhbCwgc2Fucy1zZXJpZiIKICAgIGZvbnQtd2VpZ2h0PSI3MDAiCiAgICBmb250LXNpemU9IjE0OCIKICAgIGxldHRlci1zcGFjaW5nPSItNyIKICAgIGZpbGw9IiMwMGRlZmYiCiAgPmNiZjwvdGV4dD4KCiAgPCEtLSBQaXRjaCBjZW50cmUgYXJjIOKAlCBzaXRzIGNsZWFubHkgYmVsb3cgdGV4dCBiYXNlbGluZSwgcGVyZmVjdGx5IGNlbnRyZWQgb24geD0yNTAgLS0+CiAgPHBhdGgKICAgIGQ9Ik0gMTE4IDMwOCBRIDI1MCAzNTggMzgyIDMwOCIKICAgIGZpbGw9Im5vbmUiCiAgICBzdHJva2U9IiMwMGRlZmYiCiAgICBzdHJva2Utd2lkdGg9IjMiCiAgICBzdHJva2UtbGluZWNhcD0icm91bmQiCiAgICBvcGFjaXR5PSIwLjU1IgogIC8+CgogIDwhLS0gQ2VudHJlIHNwb3Qg4oCUIHNpdHMgb24gdGhlIGFyYyBhcGV4LCBwZXJmZWN0bHkgY2VudHJlZCAtLT4KICA8Y2lyY2xlIGN4PSIyNTAiIGN5PSIzMjAiIHI9IjYiIGZpbGw9IiMwMGRlZmYiIG9wYWNpdHk9IjAuNTUiLz4KCjwvc3ZnPgo=";
+
+function openShareModal(){
+  document.getElementById('shareModal').classList.add('open');
+  drawShareCard();
+}
+function closeShareModal(){
+  document.getElementById('shareModal').classList.remove('open');
+}
+
+function drawShareCard(){
+  const canvas = document.getElementById('shareCanvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // background
+  ctx.fillStyle = '#2A2A2A';
+  ctx.fillRect(0, 0, W, H);
+
+  // subtle radial glow
+  const grad = ctx.createRadialGradient(W/2, H*0.32, 50, W/2, H*0.32, 700);
+  grad.addColorStop(0, 'rgba(0,222,255,0.16)');
+  grad.addColorStop(1, 'rgba(0,222,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  const drawRest = () => {
+    // logo
+    const logoSize = 140;
+    ctx.drawImage(shareLogo, W/2 - logoSize/2, 120, logoSize, logoSize);
+
+    // eyebrow
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#00DEFF';
+    ctx.font = '700 30px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText('COACHEDBYFREDDIE', W/2, 330);
+
+    ctx.fillStyle = 'rgba(237,235,233,0.6)';
+    ctx.font = '600 26px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText('FAST FOOTWORK PROGRESS', W/2, 372);
+
+    // move name
+    const moveName = document.getElementById('moveName').textContent || 'Move';
+    ctx.fillStyle = '#EDEBE9';
+    ctx.font = '700 52px "SF Pro Display", Arial, sans-serif';
+    wrapCenteredText(ctx, moveName, W/2, 480, W - 160, 60);
+
+    // big stat
+    const history = state.history;
+    const latest = history.length ? history[history.length-1] : null;
+    const best = history.length ? Math.max(...history.map(h => h.reps)) : null;
+    const bigNumber = latest ? latest.reps : 0;
+
+    ctx.fillStyle = '#00DEFF';
+    ctx.font = '800 340px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText(String(bigNumber), W/2, 900);
+
+    ctx.fillStyle = 'rgba(237,235,233,0.7)';
+    ctx.font = '600 34px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText('REPS IN 30 SECONDS', W/2, 970);
+
+    // player + total completions
+    ctx.fillStyle = '#EDEBE9';
+    ctx.font = '700 40px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText(currentPlayer ? currentPlayer.name : 'Player', W/2, 1080);
+
+    ctx.fillStyle = 'rgba(237,235,233,0.55)';
+    ctx.font = '500 28px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText(state.total + ' total completions', W/2, 1125);
+
+    // best score / improvement badge
+    if(best !== null && history.length > 1){
+      const prevBest = Math.max(...history.slice(0, -1).map(h => h.reps));
+      if(latest.reps > prevBest){
+        ctx.fillStyle = 'rgba(0,222,255,0.15)';
+        roundRect(ctx, W/2 - 260, 1180, 520, 90, 45);
+        ctx.fill();
+        ctx.fillStyle = '#00DEFF';
+        ctx.font = '700 34px "SF Pro Display", Arial, sans-serif';
+        ctx.fillText('🎉 New Best — beat it by ' + (latest.reps - prevBest), W/2, 1236);
+      }
+    }
+
+    // footer
+    ctx.fillStyle = 'rgba(237,235,233,0.45)';
+    ctx.font = '500 30px "SF Pro Display", Arial, sans-serif';
+    ctx.fillText('coachedbyfreddie', W/2, H - 100);
+
+    // update download link
+    const link = document.getElementById('shareDownloadLink');
+    link.href = canvas.toDataURL('image/png');
+    const safeName = (currentPlayer ? currentPlayer.name : 'player').replace(/[^a-z0-9]+/gi,'-');
+    link.download = 'cbf-' + safeName + '-progress.png';
+  };
+
+  if(shareLogo.complete){
+    drawRest();
+  } else {
+    shareLogo.onload = drawRest;
+  }
+}
+
+function wrapCenteredText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = text.split(' ');
+  let line = '';
+  const lines = [];
+  for(let i=0;i<words.length;i++){
+    const testLine = line + words[i] + ' ';
+    if(ctx.measureText(testLine).width > maxWidth && i > 0){
+      lines.push(line.trim());
+      line = words[i] + ' ';
+    } else {
+      line = testLine;
+    }
+  }
+  lines.push(line.trim());
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l, x, startY + i * lineHeight));
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+buildSidebar();
+showLogin();
+</script>
+</body>
+</html>
