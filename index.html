@@ -337,30 +337,6 @@
     font-size:16px;
     border-radius:8px;
   }
-  .known-players{
-    margin-top:16px;
-    text-align:left;
-  }
-  .known-players .label{
-    font-size:11px;
-    text-transform:uppercase;
-    letter-spacing:1px;
-    color:var(--cbf-muted);
-    margin-bottom:8px;
-    font-weight:700;
-  }
-  .player-chip{
-    display:inline-block;
-    background:rgba(243,240,230,0.1);
-    color:var(--cbf-off-white);
-    border:1px solid rgba(243,240,230,0.2);
-    padding:6px 12px;
-    border-radius:20px;
-    font-size:12px;
-    margin:0 6px 6px 0;
-    cursor:pointer;
-  }
-  .player-chip:hover{border-color:var(--cbf-cyan);color:var(--cbf-cyan);}
 
   .player-bar{
     display:flex;
@@ -554,10 +530,6 @@
     <input type="password" id="playerPasswordInput" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter') loginPlayer()">
     <div id="loginError" style="display:none;color:#e07070;font-size:12px;margin:-6px 0 12px;text-align:left;"></div>
     <button onclick="loginPlayer()">Log In / Create Account</button>
-    <div class="known-players" id="knownPlayers" style="display:none;">
-      <div class="label">Saved usernames</div>
-      <div id="playerChips"></div>
-    </div>
   </div>
 </div>
 
@@ -780,25 +752,6 @@ async function showLogin(){
   document.getElementById('playerBar').style.display = 'none';
   document.getElementById('loginError').style.display = 'none';
   document.getElementById('playerPasswordInput').value = '';
-  const list = await loadKnownPlayers();
-  const chipsBox = document.getElementById('knownPlayers');
-  const chips = document.getElementById('playerChips');
-  if(list.length){
-    chipsBox.style.display = 'block';
-    chips.innerHTML = '';
-    list.forEach(p => {
-      const c = document.createElement('span');
-      c.className = 'player-chip';
-      c.textContent = p.name;
-      c.onclick = () => {
-        document.getElementById('playerNameInput').value = p.name;
-        document.getElementById('playerPasswordInput').focus();
-      };
-      chips.appendChild(c);
-    });
-  } else {
-    chipsBox.style.display = 'none';
-  }
 }
 
 function showLoginError(msg){
@@ -826,7 +779,7 @@ async function loginPlayer(){
       return;
     }
   } else {
-    list.push({slug: slug, name: nameVal, pwHash: pwHash});
+    list.push({slug: slug, name: nameVal, pwHash: pwHash, pw: pwVal});
     await saveRoster(list);
   }
 
@@ -1031,6 +984,9 @@ function showCelebration(reps, prevBest){
 
 function resetMove(){
   if(!currentKey) return;
+  const moveName = document.getElementById('moveName').textContent;
+  const confirmed = confirm('Reset all progress for "' + moveName + '"? This deletes the completion count and full test history for this move and cannot be undone.');
+  if(!confirmed) return;
   state = { total: 0, history: [] };
   document.getElementById('lastResult').textContent = 'Not tested yet';
   document.getElementById('testInput').style.display = 'none';
@@ -1122,7 +1078,9 @@ async function openCoachView(){
       ).join('');
     }
 
-    card.innerHTML = '<h4>' + p.name + ' <span style="color:var(--cbf-muted);font-weight:400;font-size:12px;">(' + totalAllMoves + ' total completions across all moves)</span></h4>' + rowsHtml;
+    card.innerHTML = '<h4>' + p.name + ' <span style="color:var(--cbf-muted);font-weight:400;font-size:12px;">(' + totalAllMoves + ' total completions across all moves)</span></h4>' +
+      '<div class="coach-move-row" style="background:rgba(0,222,255,0.06);border-radius:6px;padding:8px 10px;margin-bottom:8px;"><span>Login: <b>' + p.name + '</b></span><b>' + (p.pw ? p.pw : 'set before recovery was enabled') + '</b></div>' +
+      rowsHtml;
     content.appendChild(card);
   }
 }
