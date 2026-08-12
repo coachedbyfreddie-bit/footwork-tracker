@@ -232,6 +232,7 @@
     border:1px solid rgba(243,240,230,0.3);
   }
   button:active{transform:scale(0.97);}
+  button:disabled{opacity:0.6;cursor:default;transform:none;}
   .milestones{
     display:flex;
     gap:5px;
@@ -598,9 +599,10 @@
     <div class="celebration" id="celebration"></div>
 
     <div class="controls">
-      <button onclick="logCompletion()">Log Completion</button>
+      <button id="logBtn" onclick="logCompletion()">Log Completion</button>
       <button class="secondary" onclick="resetMove()">Reset This Move</button>
     </div>
+    <div id="saveStatus" style="text-align:center;font-size:11px;margin-top:6px;min-height:14px;"></div>
 
     <button class="share-btn" onclick="openShareModal()">📤 Share Progress to Instagram Story</button>
 
@@ -686,6 +688,7 @@ const interval = 5;
 let currentKey = null;
 let state = { total: 0, history: [] };
 let currentPlayer = null;
+let pendingSave = Promise.resolve();
 
 /* ---------- Storage adapter ----------
    Backed by Firebase Firestore, so a player's progress follows them
@@ -833,6 +836,11 @@ function buildSidebar(){
 }
 
 async function selectMove(section, move){
+  // Make sure any save still in flight for the previous move finishes
+  // and lands before we load fresh data for the new one — otherwise a
+  // slow mobile connection can make this screen show stale progress.
+  await pendingSave;
+
   currentKey = slug(section, move.name);
   document.querySelectorAll('.move-btn').forEach(b => b.classList.remove('active'));
   const activeBtn = document.getElementById('btn-' + currentKey);
@@ -868,9 +876,36 @@ async function loadState(){
 
 async function saveState(){
   if(!currentPlayer) return;
-  try{
-    await localDB.set('footwork:' + currentPlayer.slug + ':' + currentKey, JSON.stringify(state));
-  }catch(e){ console.error('Storage error', e); }
+  // Chain onto any save already in progress for this player/move, so
+  // writes always complete in order and nothing gets overwritten by
+  // a slower-finishing earlier save (this matters most on mobile
+  // data, where network timing is far less predictable than wifi).
+  pendingSave = pendingSave.then(async () => {
+    try{
+      await localDB.set('footwork:' + currentPlayer.slug + ':' + currentKey, JSON.stringify(state));
+      setSaveStatus('saved');
+    }catch(e){
+      console.error('Storage error', e);
+      setSaveStatus('error');
+    }
+  });
+  return pendingSave;
+}
+
+function setSaveStatus(status){
+  const el = document.getElementById('saveStatus');
+  if(!el) return;
+  if(status === 'saving'){
+    el.textContent = 'Saving…';
+    el.style.color = 'var(--cbf-muted)';
+  } else if(status === 'saved'){
+    el.textContent = 'Saved';
+    el.style.color = 'var(--cbf-cyan)';
+    setTimeout(() => { if(el.textContent === 'Saved') el.textContent = ''; }, 1500);
+  } else if(status === 'error'){
+    el.textContent = 'Not saved — check your connection';
+    el.style.color = '#e07070';
+  }
 }
 
 function isTestDue(n){
@@ -940,11 +975,15 @@ function renderHistory(){
   });
 }
 
-function logCompletion(){
+async function logCompletion(){
   if(!currentKey) return;
+  const btn = document.getElementById('logBtn');
+  if(btn) btn.disabled = true;
   state.total++;
   render();
-  saveState();
+  setSaveStatus('saving');
+  await saveState();
+  if(btn) btn.disabled = false;
   if(isTestDue(state.total)){
     document.getElementById('testInput').style.display = 'flex';
     document.getElementById('repsField').value = '';
@@ -952,7 +991,7 @@ function logCompletion(){
   }
 }
 
-function submitResult(){
+async function submitResult(){
   const field = document.getElementById('repsField');
   const reps = parseInt(field.value, 10);
   if(isNaN(reps) || reps < 0) return;
@@ -963,7 +1002,8 @@ function submitResult(){
   document.getElementById('lastResult').textContent = reps + ' reps (at completion #' + state.total + ')';
   document.getElementById('testInput').style.display = 'none';
   renderHistory();
-  saveState();
+  setSaveStatus('saving');
+  await saveState();
   showCelebration(reps, prevBest);
 }
 
@@ -982,7 +1022,7 @@ function showCelebration(reps, prevBest){
   setTimeout(() => { box.style.display = 'none'; }, 6000);
 }
 
-function resetMove(){
+async function resetMove(){
   if(!currentKey) return;
   const moveName = document.getElementById('moveName').textContent;
   const confirmed = confirm('Reset all progress for "' + moveName + '"? This deletes the completion count and full test history for this move and cannot be undone.');
@@ -993,7 +1033,8 @@ function resetMove(){
   document.getElementById('celebration').style.display = 'none';
   render();
   renderHistory();
-  saveState();
+  setSaveStatus('saving');
+  await saveState();
 }
 
 /* ---------- Coach View ---------- */
